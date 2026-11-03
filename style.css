@@ -1,0 +1,25 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Estilos de sombra brutalista monocromática */
+.mockup-card {
+    border: 2px solid #000000;
+    box-shadow: 4px 4px 0px 0px #000000;
+}
+
+.mockup-button {
+    border: 2px solid #000000;
+    box-shadow: 3px 3px 0px 0px #000000;
+    transition: all 0.1s ease;
+}
+
+.mockup-button:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px 0px #000000;
+}
+
+.mockup-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px 0px #000000;
+}

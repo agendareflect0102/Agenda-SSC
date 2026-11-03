@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGENDA REFLECT - Control de Visitas</title>
+    <!-- Tailwind CSS desde CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fuente Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-neutral-100 text-black min-h-screen pb-12">
+
+    <!-- ENCABEZADO Y NAVEGACIÓN PRINCIPAL -->
+    <header class="bg-white border-b-4 border-black py-4 px-4 mb-6">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight uppercase">AGENDA REFLECT</h1>
+                <p class="text-xs font-semibold tracking-wider text-neutral-600 uppercase mt-0.5">
+                    Sistema de Control
+                </p>
+            </div>
+            
+            <!-- Menú de Navegación entre Pantallas -->
+            <nav class="flex flex-wrap gap-2">
+                <button onclick="switchView('view-agenda')" id="nav-agenda" class="mockup-button bg-black text-white px-3 py-1.5 text-xs font-bold uppercase">
+                    Agenda Principal
+                </button>
+                <button onclick="switchView('view-colonias')" id="nav-colonias" class="mockup-button bg-white text-black px-3 py-1.5 text-xs font-bold uppercase">
+                    Colonias
+                </button>
+                <button onclick="openModal()" class="mockup-button bg-black text-white px-3 py-1.5 text-xs font-bold uppercase flex items-center gap-1">
+                    <span>+</span> Agendar Visita
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- CONTENEDOR DE PANTALLAS (VISTAS) -->
+    <main class="max-w-6xl mx-auto px-4">
+
+        <!-- ========================================== -->
+        <!-- PANTALLA 1: AGENDA PRINCIPAL Y CALENDARIO  -->
+        <!-- ========================================== -->
+        <section id="view-agenda" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Calendario y Resumen Estadístico -->
+            <div class="lg:col-span-5 flex flex-col gap-6">
+                <div class="mockup-card bg-white p-5">
+                    <div class="flex justify-between items-center mb-4 pb-2 border-b-2 border-black">
+                        <button onclick="changeMonth(-1)" class="mockup-button bg-neutral-200 text-black font-bold px-3 py-1 text-sm">&lt; ANT</button>
+                        <h2 id="calendarMonthYear" class="font-bold text-lg uppercase tracking-wide">Cargando...</h2>
+                        <button onclick="changeMonth(1)" class="mockup-button bg-neutral-200 text-black font-bold px-3 py-1 text-sm">SIG &gt;</button>
+                    </div>
+                    <div class="grid grid-cols-7 text-center font-bold text-xs uppercase mb-2 text-neutral-700">
+                        <div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div>
+                    </div>
+                    <div id="calendarDays" class="grid grid-cols-7 gap-1 text-center"></div>
+                </div>
+
+                <div class="mockup-card bg-white p-5">
+                    <h3 class="font-bold text-sm uppercase mb-3 border-b-2 border-black pb-1">Resumen del Estado</h3>
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="p-2 bg-neutral-100 border border-black">
+                            <span id="statTotal" class="block text-2xl font-black">0</span>
+                            <span class="text-[10px] uppercase font-bold text-neutral-600">Viviendas</span>
+                        </div>
+                        <div class="p-2 bg-neutral-100 border border-black">
+                            <span id="statCompleted" class="block text-2xl font-black">0</span>
+                            <span class="text-[10px] uppercase font-bold text-neutral-600">Completadas</span>
+                        </div>
+                        <div class="p-2 bg-neutral-100 border border-black">
+                            <span id="statPending" class="block text-2xl font-black">0</span>
+                            <span class="text-[10px] uppercase font-bold text-neutral-600">Pendientes</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista Global de Visitas -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 bg-white p-3 mockup-card">
+                    <span class="font-bold text-xs uppercase">Filtrar visitas:</span>
+                    <div class="flex gap-1 text-xs font-bold">
+                        <button onclick="setFilter('all')" id="filter-all" class="px-3 py-1 border border-black bg-black text-white">TODAS</button>
+                        <button onclick="setFilter('pending')" id="filter-pending" class="px-3 py-1 border border-black bg-white">PENDIENTES</button>
+                        <button onclick="setFilter('completed')" id="filter-completed" class="px-3 py-1 border border-black bg-white">COMPLETADAS</button>
+                    </div>
+                </div>
+                <div id="visitsList" class="flex flex-col gap-4"></div>
+            </div>
+        </section>
+
+
+       <!-- ========================================== -->
+<!-- PANTALLA 2: AGRUPACIÓN POR COLONIAS        -->
+<!-- ========================================== -->
+<section id="view-colonias" class="hidden flex-col gap-6">
+    <div class="bg-white p-4 mockup-card flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h2 class="text-xl font-black uppercase"> Colonias</h2>
+            <p class="text-xs text-neutral-600 mt-1">
+                Visualiza y prioriza las viviendas que requieren visita clasificándolas por su colonia.
+            </p>
+        </div>
+
+        <!-- Selector Desplegable de Colonias -->
+        <div class="flex items-center gap-2">
+            <label for="selectColonia" class="text-xs font-bold uppercase whitespace-nowrap">Ver Colonia:</label>
+            <select id="selectColonia" onchange="filterColoniaView(this.value)" class="p-2 border-2 border-black font-bold text-xs uppercase bg-white cursor-pointer focus:outline-none">
+                <option value="all">-- TODAS LAS COLONIAS --</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Contenedor de Colonias -->
+    <div id="coloniasContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+</section>
+
+
+        <!-- ========================================== -->
+        <!-- PANTALLA 3: DETALLE Y CHECKLIST VIVIENDA   -->
+        <!-- ========================================== -->
+        <section id="view-housing-detail" class="hidden flex-col gap-6">
+            <div class="flex justify-between items-center bg-white p-4 mockup-card">
+                <div>
+                    <button onclick="switchView('view-colonias')" class="text-xs font-bold underline uppercase mb-1">&larr; Volver a Colonias</button>
+                    <h2 id="detailHousingTitle" class="text-2xl font-black uppercase">Vivienda ID: -</h2>
+                    <p id="detailHousingAddress" class="text-xs font-semibold text-neutral-600 uppercase"></p>
+                </div>
+                <span id="detailHousingColonia" class="border-2 border-black bg-black text-white text-xs font-black px-3 py-1 uppercase"></span>
+            </div>
+
+            <!-- Contenedor de las Tarjetas para Persona A y Persona B -->
+            <div id="participantsDetailContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </section>
+
+    </main>
+
+    <!-- MODAL PARA AGENDAR NUEVA VISITA -->
+    <div id="visitModal" class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white mockup-card w-full max-w-lg p-6 relative">
+            <h2 class="text-xl font-black uppercase mb-4 pb-2 border-b-2 border-black">
+                Agendar Nueva Visita de Vivienda
+            </h2>
+
+            <form id="visitForm" onsubmit="handleFormSubmit(event)" class="flex flex-col gap-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">ID Vivienda:</label>
+                        <input type="text" id="inputHousingId" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">Colonia:</label>
+                        <input type="text" id="inputColonia" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase mb-1">Domicilio Completo:</label>
+                    <input type="text" id="inputAddress" required class="w-full p-2 border-2 border-black text-sm">
+                </div>
+
+                <div class="border-t border-b border-black py-2 my-1 space-y-2">
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">Nombre - Persona A:</label>
+                        <input type="text" id="inputPersonA" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">Nombre - Persona B:</label>
+                        <input type="text" id="inputPersonB" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">Fecha:</label>
+                        <input type="date" id="inputDate" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase mb-1">Hora de Cita:</label>
+                        <input type="time" id="inputTime" required class="w-full p-2 border-2 border-black text-sm">
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-4 pt-3 border-t-2 border-black">
+                    <button type="button" onclick="closeModal()" class="mockup-button bg-white text-black font-bold px-4 py-2 text-xs uppercase">Cancelar</button>
+                    <button type="submit" class="mockup-button bg-black text-white font-bold px-4 py-2 text-xs uppercase">Guardar Cita</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
