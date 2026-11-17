@@ -2,11 +2,11 @@
    CONFIGURACIÓN E INICIALIZACIÓN DE SUPABASE
    ========================================================== */
 // Reemplaza estas variables con las credenciales reales de tu proyecto en Supabase
-const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
-const SUPABASE_KEY = 'TU-ANON-KEY-PUBLICA';
+const SUPABASE_URL = 'https://gjkhyxdcaftkzdqgujkk.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_7ZHAFz4wjnqiAR8ZO2CK_g_KuBwp2A_';
 
 let supabaseClient = null;
-if (typeof supabase !== 'undefined' && SUPABASE_URL !== 'https://TU-PROYECTO.supabase.co') {
+if (typeof supabase !== 'undefined' && SUPABASE_URL !== 'https://gjkhyxdcaftkzdqgujkk.supabase.co') {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
