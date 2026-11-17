@@ -6,7 +6,7 @@ const SUPABASE_URL = 'https://gjkhyxdcaftkzdqgujkk.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_7ZHAFz4wjnqiAR8ZO2CK_g_KuBwp2A_';
 
 let supabaseClient = null;
-if (typeof supabase !== 'undefined' && SUPABASE_URL !== 'https://gjkhyxdcaftkzdqgujkk.supabase.co') {
+if (typeof supabase !== 'undefined' && SUPABASE_URL) {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
