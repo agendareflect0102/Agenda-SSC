@@ -6,11 +6,13 @@
     <title>AGENDA REFLECT - Control de Visitas</title>
     <!-- Tailwind CSS desde CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Cliente oficial de Supabase para el navegador -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- html2pdf.js para generación de reportes PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- Fuente Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body class="min-h-screen pb-12">
 
@@ -148,7 +150,7 @@
                     <p class="text-xs text-slate-600 mt-1">Genera reportes imprimibles en PDF con filtros de fecha personalizados.</p>
                 </div>
                 <button onclick="openExportPdfModal()" class="mockup-button bg-sky-700 text-white font-bold px-4 py-2.5 text-xs uppercase flex items-center gap-2">
-                    <span>🖨️</span> Exportar Hoja de Ruta (PDF)
+                    <span></span> Exportar Hoja de Ruta (PDF)
                 </button>
             </div>
 

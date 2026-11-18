@@ -3,7 +3,7 @@
    ========================================================== */
 // Reemplaza estas variables con las credenciales reales de tu proyecto en Supabase
 const SUPABASE_URL = 'https://gjkhyxdcaftkzdqgujkk.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_7ZHAFz4wjnqiAR8ZO2CK_g_KuBwp2A_';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdqa2h5eGRjYWZ0a3pkcWd1amtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MjE5OTYsImV4cCI6MjExMDQ5Nzk5Nn0.qR_cY19SCP2bqX6MPD0bqihkOX8ujbIVaGHqx8abJUg';
 
 let supabaseClient = null;
 if (typeof supabase !== 'undefined' && SUPABASE_URL) {
@@ -87,8 +87,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // 4. Sincronizar con Supabase si hay conexión a internet disponible
+    // 4. Cargar datos remotos y sincronizar cambios pendientes
     if (navigator.onLine && supabaseClient) {
+        await loadVisitsFromSupabase();
         await syncAllPendingVisits();
     }
 
@@ -169,7 +170,11 @@ function saveVisitsToLocalStorage() {
 window.addEventListener('online', async () => {
     showAlert("📶 Conexión restablecida. Sincronizando datos con Supabase...");
     if (supabaseClient) {
+        await loadVisitsFromSupabase();
         await syncAllPendingVisits();
+        renderCitasList();
+        renderColoniasCards();
+        renderChecklistsView();
     }
 });
 
@@ -177,30 +182,25 @@ window.addEventListener('online', async () => {
    INTEGRACIÓN CON SUPABASE (AUTOCOMPLETADO Y SINCRONIZACIÓN)
    ========================================================== */
 async function autoFillHousingData(housingId) {
-    // 1. Buscar primero en el almacenamiento local
-    const localHousing = housingVisits.find(h => h.id.toLowerCase() === housingId.toLowerCase());
-    if (localHousing) {
-        fillFormFields(localHousing.colonia, localHousing.address, localHousing.personA.name, localHousing.personB.name);
-        showAlert(`✓ Datos de la vivienda #${housingId} recuperados localmente.`);
-        return;
-    }
-
-    // 2. Si hay conexión, consultar la base de datos de Supabase
+    // Consultar primero la base remota cuando hay conexión.
     if (navigator.onLine && supabaseClient) {
         try {
             const { data: vivienda, error } = await supabaseClient
                 .from('viviendas')
                 .select(`
+                    housing_id,
                     colonia,
                     address,
                     participantes ( rol, nombre )
                 `)
                 .eq('housing_id', housingId)
-                .single();
+                .maybeSingle();
 
+            if (error) throw error;
             if (vivienda) {
-                const pA = vivienda.participantes.find(p => p.rol === 'PersonaA');
-                const pB = vivienda.participantes.find(p => p.rol === 'PersonaB');
+                const participants = vivienda.participantes || [];
+                const pA = participants.find(p => p.rol === 'PersonaA');
+                const pB = participants.find(p => p.rol === 'PersonaB');
                 fillFormFields(
                     vivienda.colonia,
                     vivienda.address,
@@ -208,10 +208,20 @@ async function autoFillHousingData(housingId) {
                     pB ? pB.nombre : ''
                 );
                 showAlert(`✓ Datos de la vivienda #${housingId} autocompletados desde Supabase.`);
+                return;
             }
         } catch (err) {
-            console.warn('Registro nuevo o error al consultar Supabase:', err);
+            console.error('Error al consultar la vivienda en Supabase:', err);
+            showAlert('No se pudieron consultar los datos en Supabase. Revisa la conexión y los permisos.');
+            return;
         }
+    }
+
+    // Si no hay conexión o el registro remoto no existe, usar la copia local.
+    const localHousing = housingVisits.find(h => h.id.toLowerCase() === housingId.toLowerCase());
+    if (localHousing) {
+        fillFormFields(localHousing.colonia, localHousing.address, localHousing.personA.name, localHousing.personB.name);
+        showAlert(`✓ Datos de la vivienda #${housingId} recuperados localmente.`);
     }
 }
 
@@ -233,7 +243,13 @@ async function syncSingleVisitToSupabase(visit) {
     try {
         const { data: viviendaData, error: viviendaErr } = await supabaseClient
             .from('viviendas')
-            .upsert({ housing_id: visit.id, colonia: visit.colonia, address: visit.address }, { onConflict: 'housing_id' })
+            .upsert({
+                housing_id: visit.id,
+                colonia: visit.colonia,
+                address: visit.address,
+                visit_date: visit.date || null,
+                visit_time: visit.time || null
+            }, { onConflict: 'housing_id' })
             .select()
             .single();
 
@@ -251,13 +267,13 @@ async function syncSingleVisitToSupabase(visit) {
                     nombre: person.name,
                     status: person.status,
                     reschedule_reason: person.rescheduleReason
-                })
+                }, { onConflict: 'vivienda_id,rol' })
                 .select()
                 .single();
 
             if (partErr) throw partErr;
 
-            await supabaseClient
+            const { error: checklistErr } = await supabaseClient
                 .from('checklists')
                 .upsert({
                     participante_id: partData.id,
@@ -265,7 +281,8 @@ async function syncSingleVisitToSupabase(visit) {
                     hemoglobin: person.checklist.hemoglobin,
                     glucose: person.checklist.glucose,
                     urine_sample: person.checklist.urineSample
-                });
+                }, { onConflict: 'participante_id' });
+            if (checklistErr) throw checklistErr;
         }
 
         visit.synced = true;
@@ -277,12 +294,86 @@ async function syncSingleVisitToSupabase(visit) {
     }
 }
 
-async function syncAllPendingVisits() {
-    for (let visit of housingVisits) {
-        if (!visit.synced) {
-            await syncSingleVisitToSupabase(visit);
-        }
+function mapSupabaseParticipant(participants, role) {
+    const participant = participants.find(item => item.rol === role);
+    const checklistRows = participant
+        ? (Array.isArray(participant.checklists) ? participant.checklists : [participant.checklists])
+        : [];
+    const checklist = checklistRows.find(Boolean) || {};
+    const person = {
+        name: participant ? participant.nombre : '',
+        status: participant ? participant.status : 'pending',
+        rescheduleReason: participant ? (participant.reschedule_reason || '') : '',
+        checklist: {
+            vitalSigns: Boolean(checklist.vital_signs),
+            hemoglobin: Boolean(checklist.hemoglobin),
+            glucose: Boolean(checklist.glucose),
+            urineSample: Boolean(checklist.urine_sample)
+        },
+        pendingItems: []
+    };
+    updatePersonPendingStatus(person);
+    if (participant && participant.status === 'rescheduled') person.status = 'rescheduled';
+    return person;
+}
+
+async function loadVisitsFromSupabase() {
+    if (!supabaseClient || !navigator.onLine) return false;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('viviendas')
+            .select(`
+                housing_id,
+                colonia,
+                address,
+                visit_date,
+                visit_time,
+                participantes (
+                    rol,
+                    nombre,
+                    status,
+                    reschedule_reason,
+                    checklists ( vital_signs, hemoglobin, glucose, urine_sample )
+                )
+            `)
+            .order('visit_date', { ascending: false });
+
+        if (error) throw error;
+
+        const remoteVisits = (data || []).map(vivienda => ({
+            id: String(vivienda.housing_id),
+            colonia: vivienda.colonia || '',
+            address: vivienda.address || '',
+            date: vivienda.visit_date || '',
+            time: vivienda.visit_time ? String(vivienda.visit_time).slice(0, 5) : '',
+            synced: true,
+            personA: mapSupabaseParticipant(vivienda.participantes || [], 'PersonaA'),
+            personB: mapSupabaseParticipant(vivienda.participantes || [], 'PersonaB')
+        }));
+        const pendingVisits = housingVisits.filter(visit => !visit.synced);
+        const pendingIds = new Set(pendingVisits.map(visit => String(visit.id).toLowerCase()));
+
+        housingVisits = [
+            ...pendingVisits,
+            ...remoteVisits.filter(visit => !pendingIds.has(visit.id.toLowerCase()))
+        ];
+        saveVisitsToLocalStorage();
+        return true;
+    } catch (err) {
+        console.error('Error al cargar visitas desde Supabase:', err);
+        showAlert('No se pudieron cargar las visitas de Supabase. Se conservan los datos locales.');
+        return false;
     }
+}
+
+async function syncAllPendingVisits() {
+    let allSynced = true;
+    for (let visit of housingVisits) {
+        if (!visit.synced && !(await syncSingleVisitToSupabase(visit))) allSynced = false;
+    }
+    if (!allSynced) showAlert('Algunas visitas siguen pendientes de sincronización con Supabase.');
+    return allSynced;
 }
 
 /* ==========================================================
@@ -318,10 +409,12 @@ async function handleAgendarSubmit(event) {
     saveVisitsToLocalStorage();
 
     if (navigator.onLine && supabaseClient) {
-        await syncSingleVisitToSupabase(newVisit);
-        showAlert(`¡Visita a la vivienda #${newVisit.id} registrada y sincronizada!`);
+        const synced = await syncSingleVisitToSupabase(newVisit);
+        showAlert(synced
+            ? `¡Visita a la vivienda #${newVisit.id} registrada y sincronizada!`
+            : `La visita #${newVisit.id} se guardó localmente, pero no se pudo sincronizar.`);
     } else {
-        showAlert(`⚠️ Guardado en el dispositivo (sin conexión). Se sincronizará al detectar red.`);
+        showAlert('Guardado en el dispositivo. Se sincronizará cuando Supabase esté disponible.');
     }
 
     document.getElementById('agendarForm').reset();
@@ -698,7 +791,11 @@ function toggleChecklistItem(housingId, personKey, itemKey, isChecked) {
     updatePersonPendingStatus(housing[personKey]);
 
     saveVisitsToLocalStorage();
-    if (navigator.onLine && supabaseClient) syncSingleVisitToSupabase(housing);
+    if (navigator.onLine && supabaseClient) {
+        syncSingleVisitToSupabase(housing).then(synced => {
+            if (!synced) showAlert('No se pudo guardar el checklist en Supabase; el cambio sigue en este dispositivo.');
+        });
+    }
 
     renderHousingChecklistDetail(housingId);
     renderPriorityPendingList();
@@ -746,7 +843,11 @@ function confirmPersonCompleted(housingId, personKey) {
     housing.synced = false;
 
     saveVisitsToLocalStorage();
-    if (navigator.onLine && supabaseClient) syncSingleVisitToSupabase(housing);
+    if (navigator.onLine && supabaseClient) {
+        syncSingleVisitToSupabase(housing).then(synced => {
+            if (!synced) showAlert('No se pudo guardar el checklist en Supabase; el cambio sigue en este dispositivo.');
+        });
+    }
 
     renderHousingChecklistDetail(housingId);
     renderPriorityPendingList();
@@ -777,7 +878,11 @@ function saveRescheduleReason(housingId, personKey) {
     housing.synced = false;
 
     saveVisitsToLocalStorage();
-    if (navigator.onLine && supabaseClient) syncSingleVisitToSupabase(housing);
+    if (navigator.onLine && supabaseClient) {
+        syncSingleVisitToSupabase(housing).then(synced => {
+            if (!synced) showAlert('No se pudo guardar el reagendado en Supabase; el cambio sigue en este dispositivo.');
+        });
+    }
 
     renderHousingChecklistDetail(housingId);
     renderPriorityPendingList();
@@ -822,7 +927,7 @@ function toggleCustomDateInputs(presetValue) {
     }
 }
 
-function handleGeneratePdf(event) {
+async function handleGeneratePdf(event) {
     event.preventDefault();
 
     const coloniaSelected = document.getElementById('pdfSelectColonia').value;
@@ -891,18 +996,33 @@ function handleGeneratePdf(event) {
         </div>
     `;
 
-    closeExportPdfModal();
-
     if (typeof html2pdf !== 'undefined') {
         const opt = {
-            margin:       0.5,
-            filename:     `Ruta_Colonia_${coloniaSelected}.pdf`,
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2 },
-            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            margin: 0.5,
+            filename: `Ruta_Colonia_${coloniaSelected}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
         };
-        html2pdf().set(opt).from(printContainer).save();
+        const previousStyle = printContainer.getAttribute('style');
+        printContainer.classList.remove('hidden');
+        printContainer.style.width = '7.5in';
+
+        closeExportPdfModal();
+        try {
+            await html2pdf().set(opt).from(printContainer).save();
+        } catch (err) {
+            console.error('Error al generar el PDF:', err);
+            showAlert('No se pudo generar el PDF. Revisa la consola para más detalles.');
+        } finally {
+            printContainer.classList.add('hidden');
+            if (previousStyle === null) printContainer.removeAttribute('style');
+            else printContainer.setAttribute('style', previousStyle);
+        }
     } else {
+        closeExportPdfModal();
+        printContainer.classList.remove('hidden');
         window.print();
+        printContainer.classList.add('hidden');
     }
 }
