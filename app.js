@@ -1,7 +1,3 @@
-/* ==========================================================
-   CONFIGURACIÓN E INICIALIZACIÓN DE SUPABASE
-   ========================================================== */
-// Reemplaza estas variables con las credenciales reales de tu proyecto en Supabase
 const SUPABASE_URL = 'https://gjkhyxdcaftkzdqgujkk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdqa2h5eGRjYWZ0a3pkcWd1amtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5MjE5OTYsImV4cCI6MjExMDQ5Nzk5Nn0.qR_cY19SCP2bqX6MPD0bqihkOX8ujbIVaGHqx8abJUg';
 
@@ -15,6 +11,7 @@ if (typeof supabase !== 'undefined' && SUPABASE_URL) {
    ========================================================== */
 let housingVisits = [];
 let selectedHousingForChecklist = null;
+let currentUser = null;
 
 // Datos iniciales de ejemplo (Mockup Data)
 const initialMockData = [
@@ -65,6 +62,66 @@ const initialMockData = [
 ];
 
 /* ==========================================================
+   AUTENTICACIÓN CON GOOGLE (SUPABASE AUTH)
+   ========================================================== */
+async function signInWithGoogle() {
+    if (!supabaseClient) {
+        showAlert("Error: Cliente de Supabase no inicializado.");
+        return;
+    }
+
+    const statusText = document.getElementById('loginStatusText');
+    const btnLogin = document.getElementById('btnGoogleLogin');
+    if (statusText) statusText.classList.remove('hidden');
+    if (btnLogin) btnLogin.disabled = true;
+
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.origin + window.location.pathname
+        }
+    });
+
+    if (error) {
+        console.error("Error al iniciar sesión con Google:", error.message);
+        showAlert("No se pudo iniciar sesión con Google.");
+        if (statusText) statusText.classList.add('hidden');
+        if (btnLogin) btnLogin.disabled = false;
+    }
+}
+
+async function signOutUser() {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signOut();
+    currentUser = null;
+    showAlert("Sesión cerrada correctamente.");
+}
+
+async function initAppAfterAuth(user) {
+    currentUser = user;
+
+    // Mostrar interfaz principal y ocultar login
+    const loginScreen = document.getElementById('loginScreen');
+    const appContainer = document.getElementById('appContainer');
+    const emailDisplay = document.getElementById('userEmailDisplay');
+
+    if (loginScreen) loginScreen.classList.add('hidden');
+    if (appContainer) appContainer.classList.remove('hidden');
+    if (emailDisplay) emailDisplay.innerText = user.email || 'Usuario Google';
+
+    // Cargar datos remotos y sincronizar cambios pendientes
+    if (navigator.onLine && supabaseClient) {
+        await loadVisitsFromSupabase();
+        await syncAllPendingVisits();
+    }
+
+    // Renderizar vistas
+    renderCitasList();
+    renderColoniasCards();
+    renderChecklistsView();
+}
+
+/* ==========================================================
    INICIALIZACIÓN AL CARGAR LA PÁGINA
    ========================================================== */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -87,16 +144,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // 4. Cargar datos remotos y sincronizar cambios pendientes
-    if (navigator.onLine && supabaseClient) {
-        await loadVisitsFromSupabase();
-        await syncAllPendingVisits();
-    }
+    // 4. Controlar estado de autenticación en Supabase
+    if (supabaseClient) {
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            if (session && session.user) {
+                await initAppAfterAuth(session.user);
+            } else {
+                const loginScreen = document.getElementById('loginScreen');
+                const appContainer = document.getElementById('appContainer');
+                const statusText = document.getElementById('loginStatusText');
+                const btnLogin = document.getElementById('btnGoogleLogin');
 
-    // 5. Renderizar vista inicial
-    renderCitasList();
-    renderColoniasCards();
-    renderChecklistsView();
+                if (loginScreen) loginScreen.classList.remove('hidden');
+                if (appContainer) appContainer.classList.add('hidden');
+                if (statusText) statusText.classList.add('hidden');
+                if (btnLogin) btnLogin.disabled = false;
+            }
+        });
+    }
 });
 
 /* ==========================================================
@@ -169,7 +234,7 @@ function saveVisitsToLocalStorage() {
 // Evento que detecta cuando se recupera la conexión a internet
 window.addEventListener('online', async () => {
     showAlert("📶 Conexión restablecida. Sincronizando datos con Supabase...");
-    if (supabaseClient) {
+    if (supabaseClient && currentUser) {
         await loadVisitsFromSupabase();
         await syncAllPendingVisits();
         renderCitasList();
@@ -182,7 +247,6 @@ window.addEventListener('online', async () => {
    INTEGRACIÓN CON SUPABASE (AUTOCOMPLETADO Y SINCRONIZACIÓN)
    ========================================================== */
 async function autoFillHousingData(housingId) {
-    // Consultar primero la base remota cuando hay conexión.
     if (navigator.onLine && supabaseClient) {
         try {
             const { data: vivienda, error } = await supabaseClient
@@ -217,7 +281,6 @@ async function autoFillHousingData(housingId) {
         }
     }
 
-    // Si no hay conexión o el registro remoto no existe, usar la copia local.
     const localHousing = housingVisits.find(h => h.id.toLowerCase() === housingId.toLowerCase());
     if (localHousing) {
         fillFormFields(localHousing.colonia, localHousing.address, localHousing.personA.name, localHousing.personB.name);
@@ -557,7 +620,6 @@ function renderChecklistsView() {
     populateColoniaFilterChecklist();
 }
 
-// 1. Poblar el filtro desplegable de Colonias en la pantalla de Checklist
 function populateColoniaFilterChecklist() {
     const selectColonia = document.getElementById('selectColoniaChecklist');
     if (!selectColonia) return;
@@ -577,7 +639,6 @@ function populateColoniaFilterChecklist() {
     filterChecklistViviendasByColonia(selectColonia.value);
 }
 
-// 2. Filtrar las viviendas mostradas en el segundo selector según la colonia elegida
 function filterChecklistViviendasByColonia(coloniaValue) {
     const selectHousing = document.getElementById('selectHousingDetail');
     if (!selectHousing) return;
@@ -614,7 +675,6 @@ function filterChecklistViviendasByColonia(coloniaValue) {
     renderHousingChecklistDetail(selectedHousingForChecklist);
 }
 
-// 3. Renderizar las tarjetas de la vivienda seleccionada con diseño moderno
 function renderHousingChecklistDetail(housingId) {
     selectedHousingForChecklist = housingId;
     const area = document.getElementById('checklistDetailArea');
@@ -650,14 +710,12 @@ function renderHousingChecklistDetail(housingId) {
     `;
 }
 
-// 4. Plantilla visual limpia y moderna para Persona A y Persona B
 function renderPersonChecklistCardModern(housing, personKey, label) {
     const person = housing[personKey];
 
     return `
         <div class="border border-slate-200 rounded-xl p-5 bg-white shadow-sm flex flex-col justify-between gap-4">
             <div>
-                <!-- Encabezado de Persona -->
                 <div class="flex justify-between items-start border-b border-slate-100 pb-3 mb-3">
                     <div>
                         <span class="text-[10px] font-black uppercase bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">${label}</span>
@@ -666,7 +724,6 @@ function renderPersonChecklistCardModern(housing, personKey, label) {
                     <div>${renderStatusBadge(person.status)}</div>
                 </div>
 
-                <!-- Botones de Acción -->
                 <div class="flex gap-2 mb-4">
                     <button onclick="confirmPersonCompleted('${housing.id}', '${personKey}')" class="mockup-button bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold py-2 px-3 rounded-md uppercase flex-1 shadow-sm transition">
                         ✓ Confirmar Atendido
@@ -676,7 +733,6 @@ function renderPersonChecklistCardModern(housing, personKey, label) {
                     </button>
                 </div>
 
-                <!-- Formulario desplegable para reagendar -->
                 <div id="rescheduleBox-${personKey}" class="hidden flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs mb-4">
                     <label class="font-bold uppercase text-[10px] text-slate-700">Motivo del Reagendado:</label>
                     <input type="text" id="rescheduleReasonInput-${personKey}" value="${person.rescheduleReason}" placeholder="Ej. Persona no localizada..." class="p-2 border border-slate-300 rounded text-xs bg-white focus:outline-none">
@@ -686,7 +742,6 @@ function renderPersonChecklistCardModern(housing, personKey, label) {
                     </div>
                 </div>
 
-                <!-- Opciones de Checklist -->
                 <div class="border-t border-slate-100 pt-3 space-y-2.5 text-xs font-semibold text-slate-800">
                     <span class="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Procedimientos Médicos:</span>
                     <label class="flex items-center gap-2.5 cursor-pointer hover:text-sky-700 transition">
@@ -708,7 +763,6 @@ function renderPersonChecklistCardModern(housing, personKey, label) {
                 </div>
             </div>
 
-            <!-- Resumen de Muestras Pendientes -->
             <div class="border-t border-dashed border-slate-200 pt-3 bg-slate-50/80 p-3 rounded-lg text-xs">
                 <strong class="uppercase text-[10px] block font-black text-slate-500 mb-0.5">Estado de Pendientes:</strong>
                 ${renderPendingSummary(person)}
@@ -769,7 +823,6 @@ function openChecklistForPerson(housingId) {
     selectedHousingForChecklist = housingId;
     switchView('view-checklists');
 
-    // Seleccionar automáticamente la colonia y la vivienda correspondientes
     const housing = housingVisits.find(h => h.id === housingId);
     if (housing) {
         const selectColonia = document.getElementById('selectColoniaChecklist');
@@ -927,6 +980,24 @@ function toggleCustomDateInputs(presetValue) {
     }
 }
 
+// Función auxiliar para convertir "2026-11-19" a "jueves, 19 de noviembre de 2026"
+function formatDateSpanish(dateStr) {
+    if (!dateStr) return 'Sin fecha';
+    // Se agrega T12:00:00 para evitar desfases de zona horaria
+    const dateObj = new Date(dateStr + 'T12:00:00');
+    if (isNaN(dateObj.getTime())) return dateStr;
+
+    const formatted = new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(dateObj);
+
+    // Poner la primera letra en mayúscula (Ej: "Jueves, 19 de noviembre de 2026")
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 async function handleGeneratePdf(event) {
     event.preventDefault();
 
@@ -941,7 +1012,7 @@ async function handleGeneratePdf(event) {
         const lastday = new Date(curr.setDate(curr.getDate() - curr.getDay() + 6));
 
         filtered = filtered.filter(v => {
-            const vDate = new Date(v.date);
+            const vDate = new Date(v.date + 'T12:00:00');
             return vDate >= firstday && vDate <= lastday;
         });
     } else if (datePreset === 'custom') {
@@ -961,12 +1032,23 @@ async function handleGeneratePdf(event) {
     const printContainer = document.getElementById('pdfPrintTemplate');
     if (!printContainer) return;
 
+    // Fecha actual de generación del reporte
+    const todayFormatted = new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    }).format(new Date());
+
     printContainer.innerHTML = `
         <div style="padding: 20px; font-family: Arial, sans-serif; color: #000;">
             <div style="border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 15px;">
                 <h1 style="font-size: 18px; font-weight: bold; text-transform: uppercase; margin: 0;">AGENDA REFLECT - HOJA DE RUTA EN CAMPO</h1>
                 <p style="font-size: 11px; margin-top: 4px; text-transform: uppercase; color: #333;">
                     <strong>Colonia:</strong> ${coloniaSelected.toUpperCase()} | <strong>Total de Casas a Visitar:</strong> ${filtered.length}
+                </p>
+                <p style="font-size: 10px; margin-top: 2px; color: #555; text-transform: capitalize;">
+                    <strong>Fecha de emisión:</strong> ${todayFormatted}
                 </p>
             </div>
 
@@ -983,7 +1065,10 @@ async function handleGeneratePdf(event) {
                     ${filtered.map(item => `
                         <tr style="border-bottom: 1px solid #000;">
                             <td style="padding: 6px; border: 1px solid #000; font-weight: bold;">#${item.id}</td>
-                            <td style="padding: 6px; border: 1px solid #000;">${item.date}<br>${item.time} hrs</td>
+                            <td style="padding: 6px; border: 1px solid #000;">
+                                <strong>${formatDateSpanish(item.date)}</strong><br>
+                                ${item.time} hrs
+                            </td>
                             <td style="padding: 6px; border: 1px solid #000;">${item.address}</td>
                             <td style="padding: 6px; border: 1px solid #000;">
                                 1. ${item.personA.name}<br>
